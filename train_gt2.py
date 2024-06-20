@@ -59,7 +59,7 @@ class GPT(nn.Module):
         sd_keys_hf = sd_hf.keys()
         sd_keys_hf = [k for k in sd_keys_hf if not k.endswith('.attn.masked_bias')]
         sd_keys_hf = [k for k in sd_keys_hf if not k.endswith('.attn.bias')]
-        transposed = ['attn.c_attn.weight', 'attn.cproj.weight', 'mlp.c_fc.weight', "mlp.c_proj.weight"]
+        transposed = ['attn.c_attn.weight', 'attn.c_proj.weight', 'mlp.c_fc.weight', "mlp.c_proj.weight"]
         # basically the openai checkpoints use a "Conv1" module, but we only want to use a vanilla versio
         # this means, that we have to transpose these weights when we import them
         assert len(sd_keys_hf) == len(sd_keys), f"mismatched keys: {len(sd_keys_hf)} != {len(sd_keys)}"
@@ -76,6 +76,23 @@ class GPT(nn.Module):
                     sd[k].copy_(sd_hf[k])
 
         return model
+    
+    def forward(self, idx):
+        # idx is of shape (B, T)
+        B, T = idx.size()
+        assert T <= self.config.block_size, f"Cannot forward sequence of length {T}, block size is only {self.config.block_size}"
+        # forward the token and posisition embeddings
+        pos = torch.arange(0, T, dtype=torch.long, device=idx.device) # shape (T)
+        pos_emb = self.transformer.wpe(pos) # position embeddings of shape (T, n_embd)
+        tok_emb = self.transformer.wte(idx) # token embeddings of shape (B, T, n_embd)
+        x = tok_emb + pos_emb
+        # forward the blocks of the transformer
+        for block in self.transformer.h:
+            x = block(x)
+        # forward the final layernorm and the classifier
+        x = self.transformer.ln_f(x)
+        logits = self.lm_head(x) # (B, T, vocab_size)
+        return logits
 
 
 class Block(nn.Module):
@@ -152,5 +169,47 @@ class MLP(nn.Module):
 
 
 # ------------------------------------------------------------------------
-model = GPT.from_pretrained('gpt2')
-print("didn't crash yay!")
+num_return_sequences = 5
+max_length = 30
+
+model =  GPT.from_pretrained("gpt2")
+model.eval()
+model.to('cuda')
+
+# prefix tokens
+import tiktoken
+enc = tiktoken.get_encoding('gpt2')
+tokens = enc.encode("Hello, I'm a language model,")
+tokens = torch.tensor(tokens, dtype=torch.long) # (8,)
+tokens = tokens.unsqueeze(0).repeat(num_return_sequences, 1) #(5, 8)
+x = tokens.to('cuda')
+
+# generate! right now x is (B, T) where B = 5, T = 8
+# set the seed to 42
+torch.manual_seed(42)
+torch.cuda.manual_seed(42)
+while x.size(1) < max_length:
+    with torch.no_grad():
+        # forward the model to get the logits
+        logits = model(x)  #(B, T, vocab_size)
+        #take the logits at the last position
+        logits = logits[:, -1, :] # (B, vocab_size)
+        # get the probablilities
+        probs = F.softmax(logits, dim=-1)
+        # do top-k- sampling of 50 (huggingface pipeline default)
+        # topk_probs here becomes (5, 50), topk_indices is (5, 50)
+        topk_probs, topk_indices = torch.topk(probs, 50, dim=-1)
+        # select a token from the top-k probabilities
+        ix = torch.multinomial(topk_probs, 1) # (B, 1)
+        # gather the corresponding indeices
+        xcol = torch.gather(topk_indices, -1, ix)  #(B, 1)
+        # append to the sequence
+        x = torch.cat((x, xcol), dim=1)
+
+# print the generated text        
+for i in range(num_return_sequences):
+    tokens = x[i, :max_length].tolist()
+    decoded = enc.decode(tokens)
+    print(">", decoded)
+
+
