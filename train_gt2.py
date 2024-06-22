@@ -237,7 +237,7 @@ if torch.cuda.is_available():
 
 train_loader = DataLoaderLite(B=2, T=1024)
 
-torch.set_float32_matmul_precision('high') # doesn't spee dup at all on my GPU GFORCE 1080TI
+#torch.set_float32_matmul_precision('high') # doesn't spee dup at all on my GPU GFORCE 1070
 
 num_return_sequences = 5
 max_length = 30
@@ -245,6 +245,9 @@ max_length = 30
 model =  GPT(GPTConfig())
 model.eval()
 model.to(device)
+import torch._dynamo
+torch._dynamo.config.suppress_errors = True
+model = torch.compile(model) # cannot be used by GTX 1070 because is too old to be supported by the triton GPU compiler, which is used as the backend. Triton only supports devices of CUDA Capability >= 7.0, but your device is of CUDA capability 6.1
 
 # optimize:
 optimizer = torch.optim.AdamW(model.parameters(), lr=3e-4)
@@ -253,6 +256,7 @@ for i in range(50):
     x, y = train_loader.next_batch()
     x, y = x.to(device), y.to(device)
     optimizer.zero_grad()
+    #with torch.autocast(device_type=device, dtype=torch.bfloat16): # would increase speed for A100 but not for GF 1070
     logits, loss = model(x, y)
     loss.backward()
     optimizer.step()
