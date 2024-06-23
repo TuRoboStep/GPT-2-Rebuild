@@ -158,14 +158,20 @@ class CausalSelfAttention(nn.Module):
         k = k.view(B, T, self.n_head, C // self.n_head).transpose(1, 2) # (B, nh, T, hs)
         q = q.view(B, T, self.n_head, C // self.n_head).transpose(1, 2) # (B, nh, T, hs)
         v = v.view(B, T, self.n_head, C // self.n_head).transpose(1, 2) # (B, nh, T, hs)
-        # attention (materializes the larte (T,T) matric for all the queries and keys)
-        att = (q @ k.transpose(-2, -1)) * (1.0 / math.sqrt(k.size(-1)))
-        # mask out future attentions
-        att = att.masked_fill(self.bias[:,:,:T,:T] == 0, float('-inf'))
-        # normalize the attention so it sums to 1
-        att = F.softmax(att, dim=-1)
-        # weighted sum of all the values that the net finds interesting
-        y = att @ v # (B, nh, T, T) x (B, nh, T, hs) -> (B, nh, T, hs)
+
+        # # attention (materializes the larte (T,T) matric for all the queries and keys)
+        # att = (q @ k.transpose(-2, -1)) * (1.0 / math.sqrt(k.size(-1)))
+        # # mask out future attentions
+        # att = att.masked_fill(self.bias[:,:,:T,:T] == 0, float('-inf'))
+        # # normalize the attention so it sums to 1
+        # att = F.softmax(att, dim=-1)
+        # # weighted sum of all the values that the net finds interesting
+        # y = att @ v # (B, nh, T, T) x (B, nh, T, hs) -> (B, nh, T, hs)
+        
+        # flash attention
+        y = F.scaled_dot_product_attention(q, k, v, is_causal=True)
+        
+
         # re-assemble all head outputs side by side, in essence concatenation
         y = y.transpose(1, 2).contiguous().view(B, T, C) 
         # output projection
@@ -220,6 +226,24 @@ class DataLoaderLite:
         return x, y
 
 
+max_lr = 6e-4
+min_lr = max_lr * 0.1
+warmup_steps = 10
+max_steps = 50
+def get_lr(it):
+    # 1) linear warmuo for warmup_iters steps
+    if it < warmup_steps:
+        return max_lr * (it+1) / warmup_steps
+    # 2) if it > lr_decay_iters, return min learning rate
+    if it > max_steps:
+        return min_lr
+    # 3) in between, use cosine decay down to min learning rate
+    decay_ratio = (it - warmup_steps) / (max_steps - warmup_steps)
+    assert 0 <= decay_ratio <= 1
+    coeff = 0.5 * (1.0 + math.cos(math.pi * decay_ratio)) # coeff starts at 1 and goes to 0
+    return min_lr + coeff * (max_lr - min_lr)
+
+
 # ------------------------------------------------------------------------
 import time
 
@@ -242,16 +266,18 @@ train_loader = DataLoaderLite(B=2, T=1024)
 num_return_sequences = 5
 max_length = 30
 
-model =  GPT(GPTConfig())
+model =  GPT(GPTConfig(vocab_size=50304))
 model.eval()
 model.to(device)
-import torch._dynamo
-torch._dynamo.config.suppress_errors = True
-model = torch.compile(model) # cannot be used by GTX 1070 because is too old to be supported by the triton GPU compiler, which is used as the backend. Triton only supports devices of CUDA Capability >= 7.0, but your device is of CUDA capability 6.1
+
+# not using compile because it's not improving the training time
+# import torch._dynamo
+# torch._dynamo.config.suppress_errors = True
+# model = torch.compile(model) # cannot be used by GTX 1070 because is too old to be supported by the triton GPU compiler, which is used as the backend. Triton only supports devices of CUDA Capability >= 7.0, but your device is of CUDA capability 6.1
 
 # optimize:
-optimizer = torch.optim.AdamW(model.parameters(), lr=3e-4)
-for i in range(50):
+optimizer = torch.optim.AdamW(model.parameters(), lr=3e-4, betas=(0.9, 0.95), eps=1e-8)
+for step in range(max_steps):
     t0 = time.time()
     x, y = train_loader.next_batch()
     x, y = x.to(device), y.to(device)
@@ -259,12 +285,16 @@ for i in range(50):
     #with torch.autocast(device_type=device, dtype=torch.bfloat16): # would increase speed for A100 but not for GF 1070
     logits, loss = model(x, y)
     loss.backward()
+    norm = torch.nn.utils.clip_grad_norm(model.parameters(), 1.0) # length of the grad is clipped to 1 to prevent large gradients
+    lr = get_lr(step)
+    for param_group in optimizer.param_groups:
+        param_group['lr'] = lr
     optimizer.step()
     torch.cuda.synchronize()
     t1 = time.time()
     dt = (t1 - t0) * 1000 # time difference in milliseconds
     tokens_per_sec = (train_loader.B * train_loader.T) / (t1 - t0)
-    print(f"step {i}, loss: {loss.item()}, dt: {dt}, tok/sec: {tokens_per_sec}")
+    print(f"step {step}, loss: {loss.item()} | lr: {lr:.4f} | gradient_norm: {norm:.4f} | dt: {dt}, tok/sec: {tokens_per_sec}")
 
 
 print(loss)
