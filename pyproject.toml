@@ -3,6 +3,11 @@ name = "gpt-2-rebuild"
 version = "0.1.0"
 description = ""
 authors = ["Stephan Meyer"]
+packages = [
+{ include = "config", from = "src" },
+{ include = "dataloader", from = "src" },
+{ include = "model_architectures", from = "src" },
+]
 readme = "README.md"
 
 [tool.poetry.dependencies]
