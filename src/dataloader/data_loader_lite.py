@@ -1,6 +1,6 @@
 import tiktoken
 import torch
-from config.GPTConfig import DatasetConfig
+from src.config.GPTConfig import DatasetConfig
 
 
 class DataLoaderLite:

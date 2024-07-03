@@ -1,5 +1,5 @@
-from model_architectures.MLP import MLP
-from config.GPTConfig import GPTConfig
+from src.model_architectures.MLP import MLP
+from src.config.GPTConfig import GPTConfig
 import pytest
 import torch
 

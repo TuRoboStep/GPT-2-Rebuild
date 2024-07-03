@@ -1,5 +1,5 @@
-from dataloader.data_loader_lite import DataLoaderLite
-from config.GPTConfig import DatasetConfig
+from src.dataloader.data_loader_lite import DataLoaderLite
+from src.config.GPTConfig import DatasetConfig
 import torch
 import pytest
 

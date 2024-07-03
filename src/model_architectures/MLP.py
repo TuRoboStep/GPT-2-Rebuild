@@ -1,5 +1,5 @@
 import torch.nn as nn
-from config.GPTConfig import GPTConfig
+from src.config.GPTConfig import GPTConfig
 
 
 class MLP(nn.Module):
