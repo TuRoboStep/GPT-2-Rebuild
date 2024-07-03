@@ -1,7 +1,7 @@
 name: Unit test before merge
 
 on: 
-  push:
+  pull_request:
     branches: 
       - '**'
 
