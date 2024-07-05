@@ -24,6 +24,7 @@ class CausalSelfAttention(nn.Module):
     
     def __init__(self, config: GPTConfig):
         super().__init__()
+        self.config = config
         assert config.n_embd % config.n_head == 0
         # key, query, value projections for all heads, but in a batch
         self.c_attn = nn.Linear(config.n_embd, 3*config.n_embd)
@@ -37,8 +38,9 @@ class CausalSelfAttention(nn.Module):
         self.register_buffer("bias", torch.tril(torch.ones(config.block_size, config.block_size))
                              .view(1, 1, config.block_size, config.block_size))
     
-    def forward(self, x):
+    def forward(self, x: torch.Tensor):
         B, T, C = x.size() # batch size, sequence length, embedding dimensionality (n_embd)
+        assert B == self.config.train_config.B
         # calculate query, key, values, for all heads in batch and move head forward to be the batch
         # nh is "number of heads", hs is "head size", and C (number of chanels) = nh * hs
         # e.g. in GPT-2 (124M), n_head=12, hs = 6, so nh*hs = 768 channels in the Transformer
@@ -50,7 +52,7 @@ class CausalSelfAttention(nn.Module):
         q = q.view(B, T, self.n_head, C // self.n_head).transpose(1, 2) # (B, nh, T, hs)
         v = v.view(B, T, self.n_head, C // self.n_head).transpose(1, 2) # (B, nh, T, hs)
 
-        # # attention (materializes the larte (T,T) matric for all the queries and keys)
+        # # attention (materializes the large (T,T) matric for all the queries and keys)
         # att = (q @ k.transpose(-2, -1)) * (1.0 / math.sqrt(k.size(-1)))
         # # mask out future attentions
         # att = att.masked_fill(self.bias[:,:,:T,:T] == 0, float('-inf'))
