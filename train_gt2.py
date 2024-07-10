@@ -40,15 +40,15 @@ if torch.cuda.is_available():
     torch.cuda.manual_seed(1337)
 
 
-total_batch_size = 524288 # 2**19, ~0.5M, in number of tokens
-B = 2 # micro batch size
-T = 1024 # sequence length
-assert total_batch_size % (B * T) == 0, "make sure total_batch_size is divisible by B * T * ddp_world_size"
-grad_accum_steps = total_batch_size // (B * T)
-print(f"total desired batch size: {total_batch_size}")
+config = GPTConfig(vocab_size=50304)
+train_config = config.train_config
+assert train_config.total_batch_size % (train_config.B * train_config.T) == 0, "make sure total_batch_size is divisible by B * T * ddp_world_size"
+grad_accum_steps = train_config.total_batch_size // (train_config.B * train_config.T)
+print(f"total desired batch size: {train_config.total_batch_size}")
 print(f"=> calculated gradient accumulation steps: {grad_accum_steps}")
 
-train_loader = DataLoaderLite(B=B, T=T, dataset_config=DatasetConfig())
+# TODO we can include dataset config into config so we only pass one object here
+train_loader = DataLoaderLite(B=train_config.B, T=train_config.T, dataset_config=DatasetConfig())
 
 #torch.set_float32_matmul_precision('high') # doesn't spee dup at all on my GPU GFORCE 1070
 
