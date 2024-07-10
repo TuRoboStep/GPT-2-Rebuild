@@ -67,7 +67,7 @@ class GPT(nn.Module):
         sd_keys_hf = [k for k in sd_keys_hf if not k.endswith('.attn.masked_bias')]
         sd_keys_hf = [k for k in sd_keys_hf if not k.endswith('.attn.bias')]
         transposed = ['attn.c_attn.weight', 'attn.c_proj.weight', 'mlp.c_fc.weight', "mlp.c_proj.weight"]
-        # basically the openai checkpoints use a "Conv1" module, but we only want to use a vanilla versio
+        # basically the openai checkpoints use a "Conv1" module, but we only want to use a vanilla version
         # this means, that we have to transpose these weights when we import them
         assert len(sd_keys_hf) == len(sd_keys), f"mismatched keys: {len(sd_keys_hf)} != {len(sd_keys)}"
         for k in sd_keys_hf:

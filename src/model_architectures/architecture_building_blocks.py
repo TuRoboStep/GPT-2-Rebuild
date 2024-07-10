@@ -24,6 +24,7 @@ class CausalSelfAttention(nn.Module):
     
     def __init__(self, config: GPTConfig):
         super().__init__()
+        self.config = config
         assert config.n_embd % config.n_head == 0
         # key, query, value projections for all heads, but in a batch
         self.c_attn = nn.Linear(config.n_embd, 3*config.n_embd)
@@ -39,6 +40,7 @@ class CausalSelfAttention(nn.Module):
     
     def forward(self, x):
         B, T, C = x.size() # batch size, sequence length, embedding dimensionality (n_embd)
+        assert B == self.config.train_config.B
         # calculate query, key, values, for all heads in batch and move head forward to be the batch
         # nh is "number of heads", hs is "head size", and C (number of chanels) = nh * hs
         # e.g. in GPT-2 (124M), n_head=12, hs = 6, so nh*hs = 768 channels in the Transformer

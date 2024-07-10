@@ -1,5 +1,11 @@
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 
+
+@dataclass
+class TrainConfig:
+    total_batch_size = 524288 # 2**19, ~0.5M, in number of tokens
+    B = 2 # micro batch size
+    T = 1024 # sequence length
 
 @dataclass
 class GPTConfig:
@@ -8,6 +14,7 @@ class GPTConfig:
     n_layer: int = 12 # number of layers
     n_head: int = 12 # number of heads
     n_embd: int = 768 # embeding dimension
+    train_config: TrainConfig = field(default_factory = TrainConfig)
 
 @dataclass
 class DatasetConfig:
