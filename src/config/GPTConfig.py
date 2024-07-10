@@ -1,4 +1,4 @@
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 
 
 @dataclass
@@ -14,7 +14,7 @@ class GPTConfig:
     n_layer: int = 12 # number of layers
     n_head: int = 12 # number of heads
     n_embd: int = 768 # embeding dimension
-    train_config: TrainConfig = TrainConfig()
+    train_config: TrainConfig = field(default_factory = TrainConfig)
 
 @dataclass
 class DatasetConfig:
